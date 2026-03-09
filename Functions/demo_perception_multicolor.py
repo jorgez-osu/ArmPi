@@ -7,6 +7,10 @@ Demo for extra functionality from ColorSorting/ColorPalletizing:
 3) stability check before "ready to pick"
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import cv2
 
 import Camera
