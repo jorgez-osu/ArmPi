@@ -11,10 +11,12 @@ Picks one block at a time.
 import sys
 import os
 import time
+import math
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import cv2
+import numpy as np
 
 import Camera
 import HiwonderSDK.Board as Board
@@ -26,10 +28,13 @@ from perception_pipeline import PerceptionPipeline
 # Gripper closed position when grasping
 SERVO1 = 500
 
-# Grasp height: Z (cm) where the gripper closes on the block. If the arm aims too low,
-# increase this (e.g. +2.5 for ~1 inch higher). Calibration/table height can cause offset.
+# Match ColorTracking.py: approach above block, then lower to grasp height.
 APPROACH_HEIGHT_CM = 5
-GRASP_HEIGHT_CM = 4.5   # was 2; raised so gripper closes at cube level (~1 in offset)
+GRASP_HEIGHT_CM = 2
+# Offsets to correct for calibration/setup. If gripper aims too far in +Y, set Y_OFFSET_CM < 0 (e.g. -2.5 for ~1 inch).
+# If gripper needs to go lower in Z, set Z_OFFSET_CM < 0 (e.g. -0.5).
+Y_OFFSET_CM = -2.5   # ~1 inch lower in Y (tune if needed)
+Z_OFFSET_CM = -0.5   # slightly lower grasp in Z (tune if needed)
 
 # Drop coordinates (x, y, z) per color
 DROP_COORDS = {
@@ -64,27 +69,29 @@ def run_pickup_sequence(ak, world_x, world_y, rotation_angle, target_color):
     """Execute pick-and-place for block at (world_x, world_y)."""
     coord = DROP_COORDS.get(target_color, DROP_COORDS["red"])
 
-    # Approach above block
-    result = ak.setPitchRangeMoving((world_x, world_y - 2, APPROACH_HEIGHT_CM), -90, -90, 0)
+    # Approach above block (same as ColorTracking: Y-2 for approach)
+    wy_approach = world_y - 2 + Y_OFFSET_CM
+    wz_grasp = GRASP_HEIGHT_CM + Z_OFFSET_CM
+    result = ak.setPitchRangeMoving((world_x, wy_approach, APPROACH_HEIGHT_CM), -90, -90, 0)
     if result is False:
         return False
     time.sleep(result[2] / 1000)
 
     # Open gripper and rotate
     Board.setBusServoPulse(1, SERVO1 - 280, 500)
-    servo2_angle = getAngle(world_x, world_y, rotation_angle)
+    servo2_angle = getAngle(world_x, world_y + Y_OFFSET_CM, rotation_angle)
     Board.setBusServoPulse(2, servo2_angle, 500)
     time.sleep(0.8)
 
-    # Lower and grasp
-    ak.setPitchRangeMoving((world_x, world_y, GRASP_HEIGHT_CM), -90, -90, 0, 1000)
+    # Lower and grasp (same as ColorTracking: (world_X, world_Y, 2))
+    ak.setPitchRangeMoving((world_x, world_y + Y_OFFSET_CM, wz_grasp), -90, -90, 0, 1000)
     time.sleep(2)
     Board.setBusServoPulse(1, SERVO1, 500)
     time.sleep(1)
 
     # Lift
     Board.setBusServoPulse(2, 500, 500)
-    ak.setPitchRangeMoving((world_x, world_y, 12), -90, -90, 0, 1000)
+    ak.setPitchRangeMoving((world_x, world_y + Y_OFFSET_CM, 12), -90, -90, 0, 1000)
     time.sleep(1)
 
     # Move to drop position
@@ -112,7 +119,8 @@ def run_pickup_sequence(ak, world_x, world_y, rotation_angle, target_color):
 
 def main():
     target_color = "red"
-    pipeline = PerceptionPipeline(size=(640, 480))
+    size = (640, 480)  # Match ColorTracking / ColorSorting
+    pipeline = PerceptionPipeline(size=size)
     ak = ArmIK()
     camera = Camera.Camera()
     camera.camera_open()
@@ -123,6 +131,12 @@ def main():
     picking = False
     stable_point = None
     rotation_angle = 0
+    # Same stability/averaging as ColorTracking: accumulate (world_x, world_y) when distance < 0.3 for 1.5s, then use mean
+    center_list = []
+    count = 0
+    last_x, last_y = 0.0, 0.0
+    start_count_t1 = True
+    t1 = 0.0
 
     try:
         while True:
@@ -153,18 +167,30 @@ def main():
                         out = pipeline.annotate_detection(out, detection, DRAW_RGB[target_color])
                         world_x, world_y = detection["world"]
                         rect = detection["rect"]
-                        rotation_angle = rect[2]
 
-                        distance, stable, avg_world = pipeline.update_stability(
-                            world_x, world_y,
-                            distance_threshold=0.3,
-                            stable_seconds=1.5,
-                        )
+                        # ColorTracking logic: distance from last position, accumulate when stable
+                        distance = math.sqrt((world_x - last_x) ** 2 + (world_y - last_y) ** 2)
+                        last_x, last_y = world_x, world_y
 
-                        if stable and avg_world is not None:
-                            stable_point = avg_world
-                            picking = True
-                            pipeline.reset_tracking_state()
+                        if distance < 0.3:
+                            center_list.extend((world_x, world_y))
+                            count += 1
+                            if start_count_t1:
+                                start_count_t1 = False
+                                t1 = time.time()
+                            if time.time() - t1 > 1.5 and count > 0:
+                                rotation_angle = rect[2]
+                                start_count_t1 = True
+                                world_X, world_Y = np.mean(np.array(center_list).reshape(count, 2), axis=0)
+                                stable_point = (world_X, world_Y)
+                                center_list = []
+                                count = 0
+                                picking = True
+                        else:
+                            t1 = time.time()
+                            start_count_t1 = True
+                            count = 0
+                            center_list = []
 
                         cv2.putText(
                             out,
@@ -176,7 +202,10 @@ def main():
                             2,
                         )
                     else:
-                        pipeline.reset_tracking_state()
+                        last_x, last_y = 0.0, 0.0
+                        start_count_t1 = True
+                        count = 0
+                        center_list = []
                         cv2.putText(
                             out,
                             f"Target: {target_color}  Not detected",
