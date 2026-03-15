@@ -26,6 +26,11 @@ from perception_pipeline import PerceptionPipeline
 # Gripper closed position when grasping
 SERVO1 = 500
 
+# Grasp height: Z (cm) where the gripper closes on the block. If the arm aims too low,
+# increase this (e.g. +2.5 for ~1 inch higher). Calibration/table height can cause offset.
+APPROACH_HEIGHT_CM = 5
+GRASP_HEIGHT_CM = 4.5   # was 2; raised so gripper closes at cube level (~1 in offset)
+
 # Drop coordinates (x, y, z) per color
 DROP_COORDS = {
     "red": (-15 + 0.5, 12 - 0.5, 1.5),
@@ -60,7 +65,7 @@ def run_pickup_sequence(ak, world_x, world_y, rotation_angle, target_color):
     coord = DROP_COORDS.get(target_color, DROP_COORDS["red"])
 
     # Approach above block
-    result = ak.setPitchRangeMoving((world_x, world_y - 2, 5), -90, -90, 0)
+    result = ak.setPitchRangeMoving((world_x, world_y - 2, APPROACH_HEIGHT_CM), -90, -90, 0)
     if result is False:
         return False
     time.sleep(result[2] / 1000)
@@ -72,7 +77,7 @@ def run_pickup_sequence(ak, world_x, world_y, rotation_angle, target_color):
     time.sleep(0.8)
 
     # Lower and grasp
-    ak.setPitchRangeMoving((world_x, world_y, 2), -90, -90, 0, 1000)
+    ak.setPitchRangeMoving((world_x, world_y, GRASP_HEIGHT_CM), -90, -90, 0, 1000)
     time.sleep(2)
     Board.setBusServoPulse(1, SERVO1, 500)
     time.sleep(1)
