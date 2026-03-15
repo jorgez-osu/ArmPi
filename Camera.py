@@ -37,6 +37,11 @@ class Camera:
             self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('Y', 'U', 'Y', 'V'))
             self.cap.set(cv2.CAP_PROP_FPS, 30)
             self.cap.set(cv2.CAP_PROP_SATURATION, 40)
+            # Minimize buffer so we get the latest frame (reduces display lag for recording)
+            try:
+                self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:
+                pass
             self.opened = True
         except Exception as e:
             print('打开摄像头失败:', e)
@@ -56,7 +61,10 @@ class Camera:
         while True:
             try:
                 if self.opened and self.cap.isOpened():
-                    ret, frame_tmp = self.cap.read()
+                    # Flush buffer so we keep the latest frame (reduces lag for screen recording)
+                    for _ in range(3):
+                        self.cap.grab()
+                    ret, frame_tmp = self.cap.retrieve()
                     if ret:
                         frame_resize = cv2.resize(frame_tmp, (self.width, self.height), interpolation=cv2.INTER_NEAREST)
                         self.frame = cv2.remap(frame_resize, self.mapx, self.mapy, cv2.INTER_LINEAR)
