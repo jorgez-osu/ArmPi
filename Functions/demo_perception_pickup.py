@@ -33,7 +33,7 @@ APPROACH_HEIGHT_CM = 5
 GRASP_HEIGHT_CM = 2
 # Offsets to correct for calibration/setup. If gripper aims too far in +Y, set Y_OFFSET_CM < 0 (e.g. -2.5 for ~1 inch).
 # If gripper needs to go lower in Z, set Z_OFFSET_CM < 0 (e.g. -0.5).
-Y_OFFSET_CM = -2.5   # ~1 inch lower in Y (tune if needed)
+Y_OFFSET_CM = 0
 Z_OFFSET_CM = -0.5   # slightly lower grasp in Z (tune if needed)
 
 # Drop coordinates (x, y, z) per color
