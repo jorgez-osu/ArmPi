@@ -12,6 +12,7 @@ import sys
 import os
 import time
 import math
+import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -131,6 +132,7 @@ def main():
     picking = False
     stable_point = None
     rotation_angle = 0
+    pickup_thread = None  # when set, pickup runs in background so camera keeps updating
     # Same stability/averaging as ColorTracking: accumulate (world_x, world_y) when distance < 0.3 for 1.5s, then use mean
     center_list = []
     count = 0
@@ -148,7 +150,8 @@ def main():
                 out = frame.copy()
                 pipeline.draw_crosshair(out)
 
-                if picking:
+                # Show live camera during pickup so arm motion is visible when recording
+                if pickup_thread is not None and pickup_thread.is_alive():
                     cv2.putText(
                         out,
                         "Picking up...",
@@ -158,6 +161,10 @@ def main():
                         DRAW_RGB[target_color],
                         2,
                     )
+                elif pickup_thread is not None and not pickup_thread.is_alive():
+                    # Pickup just finished
+                    pickup_thread = None
+                    set_buzzer(0.1)
                 else:
                     pre = pipeline.preprocess_frame(frame.copy())
                     lab = pipeline.to_lab(pre)
@@ -220,11 +227,14 @@ def main():
                 if cv2.waitKey(1) == 27:
                     break
 
-                # Run pickup sequence when we have a stable target
-                if picking and stable_point is not None:
+                # Start pickup in background thread so camera keeps updating (arm visible on screen)
+                if picking and stable_point is not None and (pickup_thread is None or not pickup_thread.is_alive()):
                     wx, wy = stable_point
-                    run_pickup_sequence(ak, wx, wy, rotation_angle, target_color)
-                    set_buzzer(0.1)
+                    rot = rotation_angle
+                    def do_pickup():
+                        run_pickup_sequence(ak, wx, wy, rot, target_color)
+                    pickup_thread = threading.Thread(target=do_pickup, daemon=True)
+                    pickup_thread.start()
                     picking = False
                     stable_point = None
             except KeyboardInterrupt:
