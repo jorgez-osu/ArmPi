@@ -35,11 +35,29 @@ __RGB_DMA = 10
 __RGB_BRIGHTNESS = 120
 __RGB_CHANNEL = 0
 __RGB_INVERT = False
-RGB = PixelStrip(__RGB_COUNT, __RGB_PIN, __RGB_FREQ_HZ, __RGB_DMA, __RGB_INVERT, __RGB_BRIGHTNESS, __RGB_CHANNEL)
-RGB.begin()
-for i in range(RGB.numPixels()):
-    RGB.setPixelColor(i, PixelColor(0,0,0))
-    RGB.show()
+
+class _DummyRGB:
+    """No-op RGB strip when rpi_ws281x cannot access /dev/mem (e.g. running without sudo)."""
+    def __init__(self, n):
+        self._n = n
+    def numPixels(self):
+        return self._n
+    def setPixelColor(self, i, color):
+        pass
+    def show(self):
+        pass
+    def begin(self):
+        pass
+
+try:
+    RGB = PixelStrip(__RGB_COUNT, __RGB_PIN, __RGB_FREQ_HZ, __RGB_DMA, __RGB_INVERT, __RGB_BRIGHTNESS, __RGB_CHANNEL)
+    RGB.begin()
+    for i in range(RGB.numPixels()):
+        RGB.setPixelColor(i, PixelColor(0, 0, 0))
+        RGB.show()
+except (RuntimeError, OSError) as e:
+    print("Board: RGB LED init failed (run with sudo for LEDs):", e)
+    RGB = _DummyRGB(__RGB_COUNT)
 
 def setMotor(index, speed):
     if index < 1 or index > 4:
