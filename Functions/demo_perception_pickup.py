@@ -121,48 +121,18 @@ def main():
 
     try:
         while True:
-            frame = camera.frame
-            if frame is None:
-                continue
+            try:
+                frame = camera.frame
+                if frame is None:
+                    continue
 
-            out = frame.copy()
-            pipeline.draw_crosshair(out)
+                out = frame.copy()
+                pipeline.draw_crosshair(out)
 
-            if picking:
-                cv2.putText(
-                    out,
-                    "Picking up...",
-                    (10, out.shape[0] - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    DRAW_RGB[target_color],
-                    2,
-                )
-            else:
-                pre = pipeline.preprocess_frame(frame.copy())
-                lab = pipeline.to_lab(pre)
-                detection = pipeline.detect_single_color(lab, target_color)
-
-                if detection is not None:
-                    out = pipeline.annotate_detection(out, detection, DRAW_RGB[target_color])
-                    world_x, world_y = detection["world"]
-                    rect = detection["rect"]
-                    rotation_angle = rect[2]
-
-                    distance, stable, avg_world = pipeline.update_stability(
-                        world_x, world_y,
-                        distance_threshold=0.3,
-                        stable_seconds=1.5,
-                    )
-
-                    if stable and avg_world is not None:
-                        stable_point = avg_world
-                        picking = True
-                        pipeline.reset_tracking_state()
-
+                if picking:
                     cv2.putText(
                         out,
-                        f"Target: {target_color}  World: ({world_x:.1f}, {world_y:.1f})",
+                        "Picking up...",
                         (10, out.shape[0] - 10),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.6,
@@ -170,32 +140,72 @@ def main():
                         2,
                     )
                 else:
-                    pipeline.reset_tracking_state()
-                    cv2.putText(
-                        out,
-                        f"Target: {target_color}  Not detected",
-                        (10, out.shape[0] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.6,
-                        DRAW_RGB["None"],
-                        2,
-                    )
+                    pre = pipeline.preprocess_frame(frame.copy())
+                    lab = pipeline.to_lab(pre)
+                    detection = pipeline.detect_single_color(lab, target_color)
 
-            cv2.imshow("Perception Pickup Demo", out)
-            if cv2.waitKey(1) == 27:
+                    if detection is not None:
+                        out = pipeline.annotate_detection(out, detection, DRAW_RGB[target_color])
+                        world_x, world_y = detection["world"]
+                        rect = detection["rect"]
+                        rotation_angle = rect[2]
+
+                        distance, stable, avg_world = pipeline.update_stability(
+                            world_x, world_y,
+                            distance_threshold=0.3,
+                            stable_seconds=1.5,
+                        )
+
+                        if stable and avg_world is not None:
+                            stable_point = avg_world
+                            picking = True
+                            pipeline.reset_tracking_state()
+
+                        cv2.putText(
+                            out,
+                            f"Target: {target_color}  World: ({world_x:.1f}, {world_y:.1f})",
+                            (10, out.shape[0] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            DRAW_RGB[target_color],
+                            2,
+                        )
+                    else:
+                        pipeline.reset_tracking_state()
+                        cv2.putText(
+                            out,
+                            f"Target: {target_color}  Not detected",
+                            (10, out.shape[0] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            DRAW_RGB["None"],
+                            2,
+                        )
+
+                cv2.imshow("Perception Pickup Demo", out)
+                if cv2.waitKey(1) == 27:
+                    break
+
+                # Run pickup sequence when we have a stable target
+                if picking and stable_point is not None:
+                    wx, wy = stable_point
+                    run_pickup_sequence(ak, wx, wy, rotation_angle, target_color)
+                    set_buzzer(0.1)
+                    picking = False
+                    stable_point = None
+            except KeyboardInterrupt:
                 break
 
-            # Run pickup sequence when we have a stable target
-            if picking and stable_point is not None:
-                wx, wy = stable_point
-                run_pickup_sequence(ak, wx, wy, rotation_angle, target_color)
-                set_buzzer(0.1)
-                picking = False
-                stable_point = None
-
     finally:
-        camera.camera_close()
-        cv2.destroyAllWindows()
+        try:
+            camera.camera_close()
+            time.sleep(0.5)  # Let camera thread see closed state before destroying windows
+        except Exception:
+            pass
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
