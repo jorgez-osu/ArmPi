@@ -139,16 +139,41 @@ def main():
             if cv2.waitKey(1) == 27:
                 break
 
-            # Start motion in background so camera continues updating
+            # Start motion in background so camera continues updating.
+            # Inside the background thread we first move above the block,
+            # then re-localize its position and angle just before grasping.
             if picking and stable_point is not None and chosen_color != "None" and (
                 motion_thread is None or not motion_thread.is_alive()
             ):
-                wx, wy = stable_point
+                approx_x, approx_y = stable_point
                 color = chosen_color
-                rot = rotation_angle
+                approx_rot = rotation_angle
 
                 def do_motion():
-                    motion.sort_block(wx, wy, rot, color)
+                    # 1) Move above the approximate position
+                    if not motion.move_above_block(approx_x, approx_y, y_offset=-2.0):
+                        return
+
+                    # 2) Short refinement loop: re-detect the same color and
+                    #    update (x, y, angle) using the latest camera frames.
+                    refined_x, refined_y, refined_rot = approx_x, approx_y, approx_rot
+                    for _ in range(8):
+                        frame_ref = camera.frame
+                        if frame_ref is None:
+                            time.sleep(0.02)
+                            continue
+                        pre_ref = pipeline.preprocess_frame(frame_ref.copy())
+                        lab_ref = pipeline.to_lab(pre_ref)
+                        det_ref = pipeline.detect_largest_of_colors(lab_ref, [color])
+                        if det_ref is not None:
+                            refined_x, refined_y = det_ref["world"]
+                            refined_rot = det_ref["rect"][2]
+                        time.sleep(0.02)
+
+                    # 3) Grasp using refined pose, then place based on color
+                    motion.grasp_block(refined_x, refined_y, refined_rot, z_override=motion.grasp_height)
+                    drop_x, drop_y, drop_z = motion.get_drop_target(color)
+                    motion.place_at(drop_x, drop_y, drop_z)
 
                 motion_thread = threading.Thread(target=do_motion, daemon=True)
                 motion_thread.start()

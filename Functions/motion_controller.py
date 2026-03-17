@@ -142,7 +142,29 @@ class MotionController:
         time.sleep(1.5)
         return True
 
-    # --- High-level tasks ----------------------------------------------
+    # --- High-level tasks & helpers ------------------------------------
+
+    def get_drop_target(self, color_name):
+        """Return (x, y, z) drop target for sorting."""
+        if color_name not in self.drop_coords:
+            color_name = "red"
+        return self.drop_coords[color_name]
+
+    def get_next_stack_target(self, color_name):
+        """
+        Return (x, y, z) for the next stack level for this color and
+        update internal stack_level, matching ColorPalletizing behavior.
+        """
+        if color_name not in self.stack_base:
+            color_name = "red"
+
+        level = self.stack_level[color_name]
+        base_x, base_y, base_z = self.stack_base[color_name]
+        target_z = base_z + level * self.stack_dz
+        # Cycle stack height after 3 blocks
+        level = (level + 1) % 3
+        self.stack_level[color_name] = level
+        return base_x, base_y, target_z
 
     def pick_and_place_color(self, world_x, world_y, block_angle, color_name):
         """
@@ -151,9 +173,7 @@ class MotionController:
         - grasp
         - place into color-specific drop bin
         """
-        if color_name not in self.drop_coords:
-            color_name = "red"
-        drop_x, drop_y, drop_z = self.drop_coords[color_name]
+        drop_x, drop_y, drop_z = self.get_drop_target(color_name)
 
         if not self.move_above_block(world_x, world_y, y_offset=-2.0):
             return False
