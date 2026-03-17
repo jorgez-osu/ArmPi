@@ -11,6 +11,7 @@ import sys
 import os
 import time
 import math
+import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -49,6 +50,7 @@ def main():
     stable_point = None
     rotation_angle = 0
     chosen_color = "None"
+    motion_thread = None  # background motion so camera stays live
 
     try:
         while True:
@@ -59,7 +61,8 @@ def main():
             out = frame.copy()
             pipeline.draw_crosshair(out)
 
-            if picking:
+            # Keep showing live camera while arm moves in background
+            if motion_thread is not None and motion_thread.is_alive():
                 cv2.putText(
                     out,
                     f"Stacking {chosen_color}...",
@@ -69,6 +72,9 @@ def main():
                     DRAW_RGB.get(chosen_color, DRAW_RGB["None"]),
                     2,
                 )
+            elif motion_thread is not None and not motion_thread.is_alive():
+                # Motion just finished
+                motion_thread = None
             else:
                 pre = pipeline.preprocess_frame(frame.copy())
                 lab = pipeline.to_lab(pre)
@@ -133,9 +139,19 @@ def main():
             if cv2.waitKey(1) == 27:
                 break
 
-            if picking and stable_point is not None and chosen_color != "None":
+            # Start motion in background so camera continues updating
+            if picking and stable_point is not None and chosen_color != "None" and (
+                motion_thread is None or not motion_thread.is_alive()
+            ):
                 wx, wy = stable_point
-                motion.stack_block(wx, wy, rotation_angle, chosen_color)
+                color = chosen_color
+                rot = rotation_angle
+
+                def do_motion():
+                    motion.stack_block(wx, wy, rot, color)
+
+                motion_thread = threading.Thread(target=do_motion, daemon=True)
+                motion_thread.start()
                 picking = False
                 stable_point = None
 
@@ -146,4 +162,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
