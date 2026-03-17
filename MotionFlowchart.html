@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ArmPi Motion Flowchart</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f6f7fb; padding: 20px; }
+    .flowchart { display: flex; flex-direction: column; align-items: center; }
+    .step { background: #ffffff; border-radius: 8px; padding: 12px 18px; margin: 8px 0;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.12); min-width: 260px; text-align: center; }
+    .arrow { margin: 4px 0; font-size: 18px; color: #555; }
+    .title { font-weight: bold; margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: #555; }
+  </style>
+</head>
+<body>
+  <h2>ArmPi Motion Flow – Pick / Sort / Stack</h2>
+  <div class="flowchart">
+    <div class="step">
+      <div class="title">1. Initialize Arm</div>
+      <div class="subtitle">Move to home pose, reset gripper and wrist.</div>
+    </div>
+    <div class="arrow">▼</div>
+
+    <div class="step">
+      <div class="title">2. Move Above Target Block</div>
+      <div class="subtitle">Use world (x, y) from perception, offset Y and height to hover above block.</div>
+    </div>
+    <div class="arrow">▼</div>
+
+    <div class="step">
+      <div class="title">3. Orient Gripper</div>
+      <div class="subtitle">Rotate wrist based on block rotation angle so jaws align with block.</div>
+    </div>
+    <div class="arrow">▼</div>
+
+    <div class="step">
+      <div class="title">4. Grasp Block</div>
+      <div class="subtitle">Open gripper, lower to grasp height, close gripper, then lift.</div>
+    </div>
+    <div class="arrow">▼</div>
+
+    <div class="step">
+      <div class="title">5a. Place in Color Bin (Sorting)</div>
+      <div class="subtitle">Move above color-specific drop coordinate and place at fixed height.</div>
+    </div>
+    <div class="arrow">or</div>
+    <div class="step">
+      <div class="title">5b. Place on Stack (Stacking)</div>
+      <div class="subtitle">Move above stack base, compute next stack height, place on top.</div>
+    </div>
+    <div class="arrow">▼</div>
+
+    <div class="step">
+      <div class="title">6. Return to Home Pose</div>
+      <div class="subtitle">Lift, move back to initial pose, ready for next block.</div>
+    </div>
+  </div>
+</body>
+</html>
+
