@@ -17,16 +17,18 @@ from ArmIK.Transform import getAngle
 
 
 class MotionController:
-    def __init__(self, drop_coords=None, grasp_height=2.0, approach_height=5.0):
+    def __init__(self, drop_coords=None, grasp_height=2.0, approach_height=5.0, y_offset_cm=2.0):
         """
         drop_coords: dict like {"red": (x, y, z), "green": (...), "blue": (...)}
         grasp_height: Z (cm) when closing gripper on block.
         approach_height: Z (cm) used when approaching above block.
+        y_offset_cm: add this to world_y for pick (e.g. 2.0 = gripper 2 cm higher in Y).
         """
         self.ak = ArmIK()
         self.servo_grip_closed = 500
         self.approach_height = approach_height
         self.grasp_height = grasp_height
+        self.y_offset_cm = y_offset_cm
 
         # Default drop coordinates (from ColorTracking / ColorSorting)
         self.drop_coords = drop_coords or {
@@ -73,9 +75,9 @@ class MotionController:
     def move_above_block(self, world_x, world_y, y_offset=-2.0):
         """
         Move above the detected block, using Y-2 and approach height,
-        matching ColorTracking / ColorSorting.
+        matching ColorTracking / ColorSorting. Applies y_offset_cm to world_y.
         """
-        target_y = world_y + y_offset
+        target_y = world_y + self.y_offset_cm + y_offset
         result = self.ak.setPitchRangeMoving(
             (world_x, target_y, self.approach_height), -90, -90, 0
         )
@@ -92,26 +94,25 @@ class MotionController:
         - lower to grasp height
         - close gripper
         - lift to 12 cm
-        Returns True on success.
+        Applies y_offset_cm to world_y. Returns True on success.
         """
         z = self.grasp_height if z_override is None else z_override
+        y = world_y + self.y_offset_cm + y_offset
 
         # Open and rotate
         self.open_gripper()
-        self.rotate_gripper_towards(world_x, world_y + y_offset, block_angle)
+        self.rotate_gripper_towards(world_x, y, block_angle)
         time.sleep(0.8)
 
         # Lower and close
-        self.ak.setPitchRangeMoving(
-            (world_x, world_y + y_offset, z), -90, -90, 0, 1000
-        )
+        self.ak.setPitchRangeMoving((world_x, y, z), -90, -90, 0, 1000)
         time.sleep(1.5)
         self.close_gripper()
         time.sleep(0.8)
 
         # Lift
         Board.setBusServoPulse(2, 500, 500)
-        self.lift_above(world_x, world_y + y_offset, 12)
+        self.lift_above(world_x, y, 12)
         time.sleep(1.0)
         return True
 
