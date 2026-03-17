@@ -17,18 +17,23 @@ from ArmIK.Transform import getAngle
 
 
 class MotionController:
-    def __init__(self, drop_coords=None, grasp_height=2.0, approach_height=5.0, y_offset_cm=2.0):
+    def __init__(self, drop_coords=None, grasp_height=2.0, approach_height=5.0,
+                 x_offset_cm=1.0, y_offset_cm=1.5, z_offset_cm=-2.0):
         """
         drop_coords: dict like {"red": (x, y, z), "green": (...), "blue": (...)}
         grasp_height: Z (cm) when closing gripper on block.
         approach_height: Z (cm) used when approaching above block.
-        y_offset_cm: add this to world_y for pick (e.g. 2.0 = gripper 2 cm higher in Y).
+        x_offset_cm: add to world_x for pick (positive = right).
+        y_offset_cm: add to world_y for pick (positive = higher in Y).
+        z_offset_cm: add to grasp z (negative = gripper reaches lower before grasp).
         """
         self.ak = ArmIK()
         self.servo_grip_closed = 500
         self.approach_height = approach_height
         self.grasp_height = grasp_height
+        self.x_offset_cm = x_offset_cm
         self.y_offset_cm = y_offset_cm
+        self.z_offset_cm = z_offset_cm
 
         # Default drop coordinates (from ColorTracking / ColorSorting)
         self.drop_coords = drop_coords or {
@@ -74,12 +79,13 @@ class MotionController:
 
     def move_above_block(self, world_x, world_y, y_offset=-2.0):
         """
-        Move above the detected block, using Y-2 and approach height,
-        matching ColorTracking / ColorSorting. Applies y_offset_cm to world_y.
+        Move above the detected block, using Y-2 and approach height.
+        Applies x_offset_cm and y_offset_cm to world position.
         """
+        target_x = world_x + self.x_offset_cm
         target_y = world_y + self.y_offset_cm + y_offset
         result = self.ak.setPitchRangeMoving(
-            (world_x, target_y, self.approach_height), -90, -90, 0
+            (target_x, target_y, self.approach_height), -90, -90, 0
         )
         if result is False:
             return False
@@ -94,25 +100,27 @@ class MotionController:
         - lower to grasp height
         - close gripper
         - lift to 12 cm
-        Applies y_offset_cm to world_y. Returns True on success.
+        Applies x_offset_cm, y_offset_cm, z_offset_cm. Returns True on success.
         """
-        z = self.grasp_height if z_override is None else z_override
+        base_z = self.grasp_height if z_override is None else z_override
+        z = base_z + self.z_offset_cm  # e.g. -2 = 2 cm lower
+        x = world_x + self.x_offset_cm
         y = world_y + self.y_offset_cm + y_offset
 
         # Open and rotate
         self.open_gripper()
-        self.rotate_gripper_towards(world_x, y, block_angle)
+        self.rotate_gripper_towards(x, y, block_angle)
         time.sleep(0.8)
 
         # Lower and close
-        self.ak.setPitchRangeMoving((world_x, y, z), -90, -90, 0, 1000)
+        self.ak.setPitchRangeMoving((x, y, z), -90, -90, 0, 1000)
         time.sleep(1.5)
         self.close_gripper()
         time.sleep(0.8)
 
         # Lift
         Board.setBusServoPulse(2, 500, 500)
-        self.lift_above(world_x, y, 12)
+        self.lift_above(x, y, 12)
         time.sleep(1.0)
         return True
 
